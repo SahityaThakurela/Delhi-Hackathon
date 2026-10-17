@@ -17,7 +17,8 @@ from backend.app.schemas.ai_schemas import (
     FindingStatus,
     Severity,
 )
-from backend.app.services.deterministic import abdm_checks, cert_valid
+from backend.app.services.deterministic import abdm_checks
+from backend.app.services.rag import search as rag_search
 
 
 class ComplianceAgent(BaseAgent):
@@ -32,11 +33,24 @@ class ComplianceAgent(BaseAgent):
 
         product = state.get("product", {})
         documents = state.get("documents", [])
-        inv_id = state.get("investigation_id")
-        hosp_id = state.get("hospital_id")
+        inv_id = state.get("investigation_id", uuid4())
+        hosp_id = state.get("hospital_id", uuid4())
+
+        await self.emit_progress(inv_id, 20, "Executing deterministic ABDM and regulatory checks")
 
         # 1. Deterministic ABDM v3 API Check
         abdm_res = abdm_checks(product, documents)
+        abdm_evidence = []
+        for ref in abdm_res.evidence_refs:
+            abdm_evidence.append(
+                FindingEvidenceRef(
+                    id=ref,
+                    source_name="ABDM Compliance Record",
+                    excerpt="ABDM v3 sandbox/milestone certification",
+                    is_independent=True,
+                )
+            )
+
         findings.append(
             FindingItem(
                 id=uuid4(),
@@ -48,26 +62,38 @@ class ComplianceAgent(BaseAgent):
                 description=abdm_res.detail,
                 status=abdm_res.status,
                 severity=abdm_res.severity_hint,
-                evidence_confidence=Confidence.high if abdm_res.evidence_refs else Confidence.medium,
+                evidence_confidence=Confidence.high if abdm_evidence else Confidence.medium,
                 claim_origin=abdm_res.origin,
                 recommended_action="Require ABDM sandbox integration test report prior to final contract signing.",
                 missing_evidence="Official ABDM milestone certificate or sandbox test logs" if abdm_res.status != FindingStatus.supported else None,
-                evidence=[
-                    FindingEvidenceRef(
-                        id=ref,
-                        source_name="ABDM Documentation",
-                        excerpt="ABDM compliance record",
-                        is_independent=True,
-                    )
-                    for ref in abdm_res.evidence_refs
-                ],
+                evidence=abdm_evidence,
             )
         )
 
-        # 2. DPDP Act 2023 Consent & Breach Notification Check
-        dpdp_docs = [d for d in documents if "dpdp" in str(d.get("doc_type", "")).lower() or "privacy" in str(d.get("filename", "")).lower()]
-        if dpdp_docs:
-            doc = dpdp_docs[0]
+        await self.emit_progress(inv_id, 50, "Searching DPDP Act 2023 evidence")
+
+        # 2. RAG Evidence Retrieval for DPDP Act 2023
+        rag_hits = await rag_search(
+            db=None,
+            hospital_id=hosp_id,
+            query="DPDP Act 2023 privacy consent breach notification CERT-In data fiduciary",
+            doc_types=["dpdp_policy", "security_questionnaire", "privacy_policy"],
+            documents=documents,
+        )
+
+        # Exclude suspicious prompt injection chunks from normal reasoning per Rule 14
+        valid_hits = [h for h in rag_hits if not h.get("is_suspicious")]
+        suspicious_hits = [h for h in rag_hits if h.get("is_suspicious")]
+
+        if valid_hits:
+            hit = valid_hits[0]
+            dpdp_ev = FindingEvidenceRef(
+                id=hit.get("document_id", uuid4()),
+                source_name=hit.get("filename", "dpdp_policy.pdf"),
+                excerpt=self.format_untrusted_document(hit.get("excerpt", ""), hit.get("filename", "")),
+                page=hit.get("page", 1),
+                is_independent=False,
+            )
             findings.append(
                 FindingItem(
                     id=uuid4(),
@@ -80,14 +106,8 @@ class ComplianceAgent(BaseAgent):
                     status=FindingStatus.supported,
                     severity=Severity.info,
                     evidence_confidence=Confidence.high,
-                    claim_origin=ClaimOrigin.independently_verified,
-                    evidence=[
-                        FindingEvidenceRef(
-                            source_name=doc.get("filename", "dpdp_policy.pdf"),
-                            excerpt="Documented data fiduciary obligations and 72-hour CERT-In incident notification procedure.",
-                            is_independent=False,
-                        )
-                    ],
+                    claim_origin=ClaimOrigin.vendor_claim,
+                    evidence=[dpdp_ev],
                 )
             )
         else:
@@ -109,9 +129,30 @@ class ComplianceAgent(BaseAgent):
                 )
             )
 
-        # 3. CDSCO Medical Device Software Applicability Check
+        # Record prompt injection finding if suspicious content was caught
+        if suspicious_hits:
+            findings.append(
+                FindingItem(
+                    id=uuid4(),
+                    investigation_id=inv_id,
+                    hospital_id=hosp_id,
+                    agent=self.name,
+                    dimension=self.dimension,
+                    title="Possible prompt-injection content in vendor document",
+                    description=f"Detected instruction-like override patterns in {suspicious_hits[0].get('filename')}. Excluded from reasoning.",
+                    status=FindingStatus.unverified,
+                    severity=Severity.low,
+                    evidence_confidence=Confidence.high,
+                    claim_origin=ClaimOrigin.inferred,
+                    recommended_action="Audit vendor document for adversarial prompt injection text.",
+                )
+            )
+
+        await self.emit_progress(inv_id, 80, "Evaluating CDSCO SaMD and NABH digital-health requirements")
+
+        # 3. CDSCO Medical Device Rules Applicability Check
         category = product.get("category", "")
-        if category in ("his_emr", "billing", "erp"):
+        if category in ("his_emr", "billing", "erp", "lis"):
             findings.append(
                 FindingItem(
                     id=uuid4(),
@@ -120,7 +161,7 @@ class ComplianceAgent(BaseAgent):
                     agent=self.name,
                     dimension=self.dimension,
                     title="CDSCO Medical Device Rules Applicability",
-                    description=f"Product category '{category}' is general hospital workflow IT, not designated as Software as a Medical Device (SaMD) under CDSCO.",
+                    description=f"Product category '{category}' is general administrative/workflow IT, not designated as Software as a Medical Device (SaMD) under CDSCO Rules 2017.",
                     status=FindingStatus.not_applicable,
                     severity=Severity.info,
                     evidence_confidence=Confidence.high,
@@ -128,4 +169,5 @@ class ComplianceAgent(BaseAgent):
                 )
             )
 
+        await self.emit_progress(inv_id, 100, "Compliance assessment completed")
         return {"findings": findings, "evidence": evidence}
