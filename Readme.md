@@ -1,6 +1,6 @@
 # KYRO — Autonomous Healthcare Vendor Intelligence Platform
 
-> **Hack-4-Crown | Team LUNA**  
+> **HACKSPRINT | Team Angry Birds 4**  
 > AI-Powered Vendor Risk Assessment & Integration Compatibility Engine for Indian Hospitals.  
 > *Evidence-driven vendor investigation, not automated vendor certification.*
 
