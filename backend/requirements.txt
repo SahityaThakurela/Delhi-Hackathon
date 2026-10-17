@@ -1,0 +1,47 @@
+# =====================================================================
+# KYRO Backend Dependencies
+# Team LUNA | Hack-4-Crown
+# =====================================================================
+
+# Framework & Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+
+# Validation & Settings (Pydantic v2)
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+
+# Database & Async Persistence (SQLAlchemy 2.0 + asyncpg + pgvector)
+SQLAlchemy>=2.0.28
+asyncpg>=0.29.0
+pgvector>=0.2.5
+alembic>=1.13.1
+redis>=5.0.3
+
+# Real-Time WebSocket Communication (python-socketio)
+python-socketio>=5.11.2
+
+# AI Orchestration, Agents & Embeddings (P2 Intelligence)
+openai>=1.14.0
+langchain>=0.1.13
+langchain-core>=0.1.33
+langgraph>=0.0.30
+
+# Document Ingestion & Parsers
+pypdf>=4.1.0
+pdfplumber>=0.11.0
+python-docx>=1.1.0
+
+# Security & Authentication (P1 Shared Foundation)
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+argon2-cffi>=23.1.0
+
+# Networking & Utilities
+httpx>=0.27.0
+python-dotenv>=1.0.1
+
+# Testing & Quality
+pytest>=8.1.0
+pytest-asyncio>=0.23.5
