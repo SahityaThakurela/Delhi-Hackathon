@@ -1,0 +1,18 @@
+{
+  "id": "ic123456-789a-bcde-f012-3456789abcde",
+  "hospital_system": {
+    "id": "hs123456-789a-bcde-f012-3456789abcde",
+    "category": "pacs",
+    "name": "Orthanc 1.12"
+  },
+  "requirement": "DICOMweb (WADO-RS/STOW-RS)",
+  "vendor_capability": "DICOM C-STORE only (api_docs p.14)",
+  "status": "partial",
+  "gap_description": "No DICOMweb endpoints documented.",
+  "effort": "medium",
+  "recommendation": "Ask vendor for DICOMweb roadmap or budget an interface engine.",
+  "evidence_ids": [
+    "e91c1234-5678-490a-bcde-fa1234567890"
+  ],
+  "evidence_confidence": "medium"
+}

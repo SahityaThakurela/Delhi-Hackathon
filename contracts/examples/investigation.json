@@ -1,0 +1,36 @@
+{
+  "id": "a9d20c5e-8e42-4f1b-8511-9a7f342f0a11",
+  "vendor": {
+    "id": "v1234567-89ab-cdef-0123-456789abcdef",
+    "name": "MediSoft HIS"
+  },
+  "product": {
+    "id": "p1234567-89ab-cdef-0123-456789abcdef",
+    "name": "MediSoft v7"
+  },
+  "title": "MediSoft HIS evaluation",
+  "status": "running",
+  "dimensions": [
+    "compliance",
+    "security_privacy",
+    "integration"
+  ],
+  "agents": [
+    {
+      "agent": "compliance",
+      "status": "running",
+      "progress": 55,
+      "current_task": "Checking ABDM v3 docs"
+    }
+  ],
+  "overall_score": null,
+  "score_confidence": null,
+  "overall_risk": null,
+  "counts": {
+    "findings": 14,
+    "critical": 1,
+    "high": 3,
+    "evidence": 38
+  },
+  "started_at": "2026-10-17T07:00:00Z"
+}
