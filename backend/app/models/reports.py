@@ -1,49 +1,73 @@
-"""
-SQLAlchemy models: reports, reviews.
-
-Bible section 4.5.
-"""
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
+from typing import Optional, Dict, Any
+from sqlalchemy import (
+    Text,
+    Integer,
+    DateTime,
+    ForeignKey,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.base import Base, UUIDPrimaryKeyMixin, CreatedAtMixin
+from app.models.enums import (
+    ReportStatus,
+    report_status_enum,
+    ReviewDecision,
+    review_decision_enum,
+    Severity,
+    severity_enum,
+    FindingStatus,
+    finding_status_enum,
+)
 
-from sqlalchemy import DateTime, Enum, Integer, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, UUIDPrimaryKeyMixin
-from app.models.enums import FindingStatus, ReportStatus, ReviewDecision, Severity
-
-
-class Report(UUIDPrimaryKeyMixin, Base):
+class Report(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "reports"
 
-    investigation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    version: Mapped[int] = mapped_column(Integer, server_default=text("1"), nullable=False)
-    status: Mapped[ReportStatus] = mapped_column(
-        Enum(ReportStatus, name="report_status"), server_default="draft", nullable=False
+    investigation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("investigations.id", ondelete="CASCADE"),
+        nullable=False,
     )
-    summary: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    storage_key: Mapped[str | None] = mapped_column(Text)
-    generated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    signed_off_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"), nullable=False)
+    status: Mapped[ReportStatus] = mapped_column(
+        report_status_enum,
+        default=ReportStatus.draft,
+        server_default=text("'draft'"),
+        nullable=False,
+    )
+    summary: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    storage_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    generated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    signed_off_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    signed_off_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class Review(UUIDPrimaryKeyMixin, Base):
+class Review(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "reviews"
 
-    finding_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    decision: Mapped[ReviewDecision] = mapped_column(
-        Enum(ReviewDecision, name="review_decision"), nullable=False
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("findings.id", ondelete="CASCADE"),
+        nullable=False,
     )
-    comment: Mapped[str | None] = mapped_column(Text)
-    edited_severity: Mapped[Severity | None] = mapped_column(Enum(Severity, name="severity"))
-    edited_status: Mapped[FindingStatus | None] = mapped_column(
-        Enum(FindingStatus, name="finding_status")
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decision: Mapped[ReviewDecision] = mapped_column(review_decision_enum, nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    edited_severity: Mapped[Optional[Severity]] = mapped_column(severity_enum, nullable=True)
+    edited_status: Mapped[Optional[FindingStatus]] = mapped_column(finding_status_enum, nullable=True)

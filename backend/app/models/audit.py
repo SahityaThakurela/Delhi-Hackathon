@@ -1,32 +1,28 @@
-"""
-SQLAlchemy model: audit_log.
-
-Uses bigserial PK for ordering. Written to on every create/update/delete.
-Bible section 4.5.
-"""
-from __future__ import annotations
-
 import uuid
-from datetime import datetime
-
-from sqlalchemy import BigInteger, DateTime, Text, func
-from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
+from typing import Optional, Dict, Any
+from sqlalchemy import (
+    Text,
+    BigInteger,
+    Index,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import Mapped, mapped_column
+from app.db.base import Base, CreatedAtMixin
 
-from app.db.base import Base
 
-
-class AuditLog(Base):
-    """Immutable append-only audit trail for all write operations."""
-
+class AuditLog(Base, CreatedAtMixin):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    hospital_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    hospital_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     action: Mapped[str] = mapped_column(Text, nullable=False)
     entity_type: Mapped[str] = mapped_column(Text, nullable=False)
-    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    diff: Mapped[dict | None] = mapped_column(JSONB)
-    ip: Mapped[str | None] = mapped_column(INET)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    diff: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    ip: Mapped[Optional[str]] = mapped_column(INET, nullable=True)
+
+    __table_args__ = (
+        Index("audit_log_hospital_id_created_at_idx", "hospital_id", text("created_at DESC")),
+    )

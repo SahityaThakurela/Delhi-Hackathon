@@ -1,67 +1,44 @@
-"""
-Application configuration sourced from environment variables / backend/.env.
-
-Uses pydantic-settings; every variable in .env.example is declared here so
-missing values are caught at startup rather than at request time.
-"""
-from __future__ import annotations
-
-import os
-from pathlib import Path
-
+from typing import List, Optional, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# Resolve .env path relative to this file regardless of cwd
-_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent  # backend/
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_BACKEND_DIR / ".env"),
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
-        case_sensitive=False,
         extra="ignore",
     )
 
-    # ── Database ─────────────────────────────────────────────────────────────
-    DATABASE_URL: str  # postgresql+asyncpg://...
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
+    REDIS_URL: str = "redis://localhost:6379/0"
 
-    # ── Redis ─────────────────────────────────────────────────────────────────
-    REDIS_URL: str = ""
-
-    # ── S3 / Storage ──────────────────────────────────────────────────────────
-    S3_ENDPOINT: str = ""
+    S3_ENDPOINT: Optional[str] = None
     S3_BUCKET: str = "kyro-documents"
-    S3_ACCESS_KEY: str = ""
-    S3_SECRET_KEY: str = ""
+    S3_ACCESS_KEY: Optional[str] = None
+    S3_SECRET_KEY: Optional[str] = None
     S3_REGION: str = "ap-south-1"
 
-    # ── OpenAI ────────────────────────────────────────────────────────────────
-    OPENAI_API_KEY: str = ""
+    OPENAI_API_KEY: Optional[str] = None
     OPENAI_CHAT_MODEL: str = "gpt-4o"
     OPENAI_FAST_MODEL: str = "gpt-4o-mini"
     OPENAI_EMBED_MODEL: str = "text-embedding-3-large"
     EMBED_DIMENSIONS: int = 1536
 
-    # ── Auth ──────────────────────────────────────────────────────────────────
-    JWT_SECRET: str
+    JWT_SECRET: str = "kyro-insecure-secret-for-dev-only-change-in-prod"
     JWT_ACCESS_MINUTES: int = 60
     JWT_REFRESH_DAYS: int = 7
 
-    # ── CORS ──────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000"]
+    NVD_API_KEY: Optional[str] = None
+    NCBI_API_KEY: Optional[str] = None
 
-    @property
-    def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
-
-    # ── Optional external APIs ────────────────────────────────────────────────
-    NVD_API_KEY: str = ""
-    NCBI_API_KEY: str = ""
-
-    # ── Demo ──────────────────────────────────────────────────────────────────
-    DEMO_PASSWORD: str = "kyro-demo-2026"
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
 
 
 settings = Settings()

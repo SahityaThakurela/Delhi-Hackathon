@@ -1,59 +1,71 @@
-"""
-SQLAlchemy models: vendors, products.
-
-Bible section 4.3.
-"""
-from __future__ import annotations
-
 import uuid
-from datetime import datetime
-
-from sqlalchemy import DateTime, Enum, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from typing import Optional, List
+from sqlalchemy import (
+    Text,
+    ForeignKey,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.base import Base, UUIDPrimaryKeyMixin, TimestampMixin, CreatedAtMixin
+from app.models.enums import (
+    SystemCategory,
+    system_category_enum,
+    DeploymentModel,
+    deployment_model_enum,
+)
 
-from app.db.base import Base, UUIDPrimaryKeyMixin
-from app.models.enums import DeploymentModel, SystemCategory
 
-
-class Vendor(UUIDPrimaryKeyMixin, Base):
+class Vendor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "vendors"
 
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    website: Mapped[str | None] = mapped_column(Text)
-    country: Mapped[str] = mapped_column(Text, server_default="India", nullable=False)
-    cin: Mapped[str | None] = mapped_column(Text)  # MCA corporate identity number
-    contact_name: Mapped[str | None] = mapped_column(Text)
-    contact_email: Mapped[str | None] = mapped_column(Text)
-    notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
+    website: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    country: Mapped[str] = mapped_column(Text, default="India", server_default=text("'India'"), nullable=False)
+    cin: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    contact_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # relationships
-    products: Mapped[list["Product"]] = relationship(
-        "Product", back_populates="vendor", passive_deletes=True
-    )
+    # Relationships
+    products: Mapped[List["Product"]] = relationship("Product", back_populates="vendor", cascade="all, delete-orphan")
 
 
-class Product(UUIDPrimaryKeyMixin, Base):
+class Product(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "products"
 
-    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[SystemCategory] = mapped_column(
-        Enum(SystemCategory, name="system_category"), nullable=False
+    category: Mapped[SystemCategory] = mapped_column(system_category_enum, nullable=False)
+    version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    deployment_models: Mapped[List[DeploymentModel]] = mapped_column(
+        ARRAY(deployment_model_enum),
+        default=list,
+        server_default=text("'{}'::deployment_model[]"),
+        nullable=False,
     )
-    version: Mapped[str | None] = mapped_column(Text)
-    description: Mapped[str | None] = mapped_column(Text)
-    deployment_models: Mapped[list] = mapped_column(
-        JSONB, server_default=text("'[]'::jsonb")  # stored as jsonb array of deployment_model strings
+    claimed_standards: Mapped[List[str]] = mapped_column(
+        ARRAY(Text),
+        default=list,
+        server_default=text("'{}'::text[]"),
+        nullable=False,
     )
-    claimed_standards: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
-    claimed_certifications: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    claimed_certifications: Mapped[List[str]] = mapped_column(
+        ARRAY(Text),
+        default=list,
+        server_default=text("'{}'::text[]"),
+        nullable=False,
+    )
 
-    # relationships
-    vendor: Mapped["Vendor"] = relationship("Vendor", back_populates="products", foreign_keys=[vendor_id])
+    # Relationships
+    vendor: Mapped["Vendor"] = relationship("Vendor", back_populates="products")

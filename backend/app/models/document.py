@@ -1,83 +1,91 @@
-"""
-SQLAlchemy models: documents, document_chunks.
-
-document_chunks carries a pgvector Vector(1536) embedding column with an
-HNSW cosine index (created in the Alembic migration).
-
-Bible section 4.3.
-"""
-from __future__ import annotations
-
 import uuid
-from datetime import date, datetime
-
-from sqlalchemy import BigInteger, Date, DateTime, Enum, Integer, Text, func, text
+from datetime import date
+from typing import Optional, List
+from sqlalchemy import (
+    Text,
+    BigInteger,
+    Integer,
+    Date,
+    ForeignKey,
+    Index,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.db.base import Base, UUIDPrimaryKeyMixin
-from app.models.enums import DocStatus
-
-try:
-    from pgvector.sqlalchemy import Vector
-    _VECTOR_TYPE = Vector(1536)
-except ImportError:  # fallback so linters don't fail without pgvector installed
-    from sqlalchemy import Text as _Vector
-    _VECTOR_TYPE = None  # type: ignore[assignment]
+from pgvector.sqlalchemy import Vector
+from app.db.base import Base, UUIDPrimaryKeyMixin, CreatedAtMixin
+from app.models.enums import DocStatus, doc_status_enum
 
 
-class Document(UUIDPrimaryKeyMixin, Base):
+class Document(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "documents"
 
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     doc_type: Mapped[str] = mapped_column(Text, nullable=False)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     storage_key: Mapped[str] = mapped_column(Text, nullable=False)
-    mime_type: Mapped[str | None] = mapped_column(Text)
-    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
-    sha256: Mapped[str | None] = mapped_column(Text)
-    version_label: Mapped[str | None] = mapped_column(Text)
-    doc_date: Mapped[date | None] = mapped_column(Date)
-    valid_until: Mapped[date | None] = mapped_column(Date)
+    mime_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    sha256: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    version_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    doc_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[DocStatus] = mapped_column(
-        Enum(DocStatus, name="doc_status"),
-        server_default="uploaded",
+        doc_status_enum,
+        default=DocStatus.uploaded,
+        server_default=text("'uploaded'"),
         nullable=False,
     )
-    error: Mapped[str | None] = mapped_column(Text)
-    page_count: Mapped[int | None] = mapped_column(Integer)
-    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    # relationships
-    chunks: Mapped[list["DocumentChunk"]] = relationship(
-        "DocumentChunk", back_populates="document", passive_deletes=True
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
     )
 
+    # Relationships
+    chunks: Mapped[List["DocumentChunk"]] = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 
-class DocumentChunk(UUIDPrimaryKeyMixin, Base):
-    """
-    A chunk of a document with a 1536-dimensional embedding vector.
 
-    The HNSW cosine index is created in the Alembic migration:
-        CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
-    """
-
+class DocumentChunk(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "document_chunks"
 
-    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    page: Mapped[int | None] = mapped_column(Integer)
+    page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    token_count: Mapped[int | None] = mapped_column(Integer)
+    token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(1536), nullable=True)
 
-    if _VECTOR_TYPE is not None:
-        embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
-
-    # relationships
-    document: Mapped["Document"] = relationship(
-        "Document", back_populates="chunks", foreign_keys=[document_id]
+    __table_args__ = (
+        Index("document_chunks_document_id_idx", "document_id"),
+        Index(
+            "document_chunks_embedding_hnsw_idx",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
+
+    # Relationships
+    document: Mapped["Document"] = relationship("Document", back_populates="chunks")

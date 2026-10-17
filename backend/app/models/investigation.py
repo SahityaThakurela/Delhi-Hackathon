@@ -1,120 +1,146 @@
-"""
-SQLAlchemy models: investigations, agent_runs, timeline_events, steering_commands.
-
-Bible section 4.4.
-"""
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
-
+from typing import Optional, List, Dict, Any
+from decimal import Decimal
 from sqlalchemy import (
-    BigInteger,
-    DateTime,
-    Enum,
-    Integer,
+    Text,
     Numeric,
     SmallInteger,
-    Text,
-    func,
+    BigInteger,
+    ForeignKey,
+    DateTime,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.base import Base, UUIDPrimaryKeyMixin, CreatedAtMixin
+from app.models.enums import (
+    InvStatus,
+    inv_status_enum,
+    Dimension,
+    dimension_enum,
+    Severity,
+    severity_enum,
+    AgentName,
+    agent_name_enum,
+    RunStatus,
+    run_status_enum,
+)
 
-from app.db.base import Base, UUIDPrimaryKeyMixin
-from app.models.enums import AgentName, Dimension, InvStatus, RunStatus, Severity
 
-
-class Investigation(UUIDPrimaryKeyMixin, Base):
+class Investigation(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "investigations"
 
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendors.id"),
+        nullable=False,
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id"),
+        nullable=True,
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[InvStatus] = mapped_column(
-        Enum(InvStatus, name="inv_status"), server_default="draft", nullable=False
+        inv_status_enum,
+        default=InvStatus.draft,
+        server_default=text("'draft'"),
+        nullable=False,
     )
-    # dimensions stored as jsonb array of dimension enum strings
-    dimensions: Mapped[list] = mapped_column(JSONB, nullable=False)
-    instructions: Mapped[str | None] = mapped_column(Text)
-    overall_score: Mapped[float | None] = mapped_column(Numeric(5, 2))
-    score_confidence: Mapped[float | None] = mapped_column(Numeric(4, 3))
-    overall_risk: Mapped[Severity | None] = mapped_column(
-        Enum(Severity, name="severity")
+    dimensions: Mapped[List[Dimension]] = mapped_column(
+        ARRAY(dimension_enum),
+        nullable=False,
     )
-    summary: Mapped[str | None] = mapped_column(Text)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    overall_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    score_confidence: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 3), nullable=True)
+    overall_risk: Mapped[Optional[Severity]] = mapped_column(severity_enum, nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # relationships
-    agent_runs: Mapped[list["AgentRun"]] = relationship(
-        "AgentRun", back_populates="investigation", passive_deletes=True
-    )
-    timeline_events: Mapped[list["TimelineEvent"]] = relationship(
-        "TimelineEvent", back_populates="investigation", passive_deletes=True
-    )
-    steering_commands: Mapped[list["SteeringCommand"]] = relationship(
-        "SteeringCommand", back_populates="investigation", passive_deletes=True
-    )
+    # Relationships
+    agent_runs: Mapped[List["AgentRun"]] = relationship("AgentRun", back_populates="investigation", cascade="all, delete-orphan")
+    timeline_events: Mapped[List["TimelineEvent"]] = relationship("TimelineEvent", back_populates="investigation", cascade="all, delete-orphan")
+    steering_commands: Mapped[List["SteeringCommand"]] = relationship("SteeringCommand", back_populates="investigation", cascade="all, delete-orphan")
 
 
-class AgentRun(UUIDPrimaryKeyMixin, Base):
+class AgentRun(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "agent_runs"
 
-    investigation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    agent: Mapped[AgentName] = mapped_column(
-        Enum(AgentName, name="agent_name"), nullable=False
+    investigation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("investigations.id", ondelete="CASCADE"),
+        nullable=False,
     )
+    agent: Mapped[AgentName] = mapped_column(agent_name_enum, nullable=False)
     status: Mapped[RunStatus] = mapped_column(
-        Enum(RunStatus, name="run_status"), server_default="pending", nullable=False
+        run_status_enum,
+        default=RunStatus.pending,
+        server_default=text("'pending'"),
+        nullable=False,
     )
-    progress: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
-    current_task: Mapped[str | None] = mapped_column(Text)
-    output: Mapped[dict | None] = mapped_column(JSONB)
-    error: Mapped[str | None] = mapped_column(Text)
-    token_usage: Mapped[dict | None] = mapped_column(JSONB)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # relationships
-    investigation: Mapped["Investigation"] = relationship(
-        "Investigation", back_populates="agent_runs", foreign_keys=[investigation_id]
+    progress: Mapped[int] = mapped_column(
+        SmallInteger,
+        default=0,
+        server_default=text("0"),
+        nullable=False,
     )
+    current_task: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    output: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_usage: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    investigation: Mapped["Investigation"] = relationship("Investigation", back_populates="agent_runs")
 
 
-class TimelineEvent(Base):
-    """Powers 'replay the timeline' feature. Uses bigserial PK for ordering."""
+class SteeringCommand(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
+    __tablename__ = "steering_commands"
 
+    investigation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("investigations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(Text, default="received", server_default=text("'received'"), nullable=False)
+
+    # Relationships
+    investigation: Mapped["Investigation"] = relationship("Investigation", back_populates="steering_commands")
+
+
+class TimelineEvent(Base, CreatedAtMixin):
     __tablename__ = "timeline_events"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    investigation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    investigation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("investigations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     event: Mapped[str] = mapped_column(Text, nullable=False)
-    agent: Mapped[AgentName | None] = mapped_column(Enum(AgentName, name="agent_name"))
-    payload: Mapped[dict | None] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    agent: Mapped[Optional[AgentName]] = mapped_column(agent_name_enum, nullable=True)
+    payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
-    # relationships
-    investigation: Mapped["Investigation"] = relationship(
-        "Investigation", back_populates="timeline_events", foreign_keys=[investigation_id]
-    )
-
-
-class SteeringCommand(UUIDPrimaryKeyMixin, Base):
-    __tablename__ = "steering_commands"
-
-    investigation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    instruction: Mapped[str] = mapped_column(Text, nullable=False)
-    parsed: Mapped[dict | None] = mapped_column(JSONB)
-    status: Mapped[str] = mapped_column(Text, server_default="received", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    # relationships
-    investigation: Mapped["Investigation"] = relationship(
-        "Investigation", back_populates="steering_commands", foreign_keys=[investigation_id]
-    )
+    # Relationships
+    investigation: Mapped["Investigation"] = relationship("Investigation", back_populates="timeline_events")

@@ -1,72 +1,93 @@
-"""
-SQLAlchemy models: requirement_catalogue, hospital_requirements.
-
-Bible section 4.2 (continued).
-"""
-from __future__ import annotations
-
 import uuid
 from datetime import date, datetime
-
-from sqlalchemy import Boolean, Date, DateTime, Enum, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from typing import Optional, List, Dict, Any
+from sqlalchemy import (
+    Text,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    text,
+    func,
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.base import Base, UUIDPrimaryKeyMixin, CreatedAtMixin
+from app.models.enums import (
+    Dimension,
+    dimension_enum,
+    Severity,
+    severity_enum,
+)
 
-from app.db.base import Base, UUIDPrimaryKeyMixin
-from app.models.enums import Dimension, Severity
 
-
-class RequirementCatalogue(UUIDPrimaryKeyMixin, Base):
-    """Global requirement catalogue curated by the KYRO team – hospital-agnostic."""
-
+class RequirementCatalogue(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "requirement_catalogue"
 
     code: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    dimension: Mapped[Dimension] = mapped_column(
-        Enum(Dimension, name="dimension"), nullable=False
-    )
+    dimension: Mapped[Dimension] = mapped_column(dimension_enum, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
-    authority: Mapped[str | None] = mapped_column(Text)
-    reference_url: Mapped[str | None] = mapped_column(Text)
-    reference_date: Mapped[date | None] = mapped_column(Date)
-    applies_to: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    check_type: Mapped[str] = mapped_column(Text, server_default="evidence", nullable=False)
-    rule: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    authority: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    applies_to: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    check_type: Mapped[str] = mapped_column(Text, default="evidence", server_default=text("'evidence'"), nullable=False)
+    rule: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
     default_severity: Mapped[Severity] = mapped_column(
-        Enum(Severity, name="severity"),
-        server_default="medium",
+        severity_enum,
+        default=Severity.medium,
+        server_default=text("'medium'"),
         nullable=False,
     )
 
-    # relationships
-    hospital_requirements: Mapped[list["HospitalRequirement"]] = relationship(
-        "HospitalRequirement", back_populates="catalogue_item"
+    hospital_requirements: Mapped[List["HospitalRequirement"]] = relationship(
+        "HospitalRequirement",
+        back_populates="catalogue",
     )
 
 
-class HospitalRequirement(UUIDPrimaryKeyMixin, Base):
-    """Per-hospital active checklist row (imported from catalogue or custom)."""
-
+class HospitalRequirement(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "hospital_requirements"
 
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    catalogue_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    dimension: Mapped[Dimension] = mapped_column(
-        Enum(Dimension, name="dimension"), nullable=False
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
     )
+    catalogue_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("requirement_catalogue.id"),
+        nullable=True,
+    )
+    dimension: Mapped[Dimension] = mapped_column(dimension_enum, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
-    mandatory: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mandatory: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
     severity_if_unmet: Mapped[Severity] = mapped_column(
-        Enum(Severity, name="severity"), server_default="high", nullable=False
+        severity_enum,
+        default=Severity.high,
+        server_default=text("'high'"),
+        nullable=False,
     )
-    rule: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    is_custom: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    rule: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
 
-    # relationships
-    catalogue_item: Mapped["RequirementCatalogue | None"] = relationship(
-        "RequirementCatalogue", back_populates="hospital_requirements",
-        foreign_keys=[catalogue_id],
-    )
+    # Relationships
+    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="requirements")
+    catalogue: Mapped[Optional["RequirementCatalogue"]] = relationship("RequirementCatalogue", back_populates="hospital_requirements")

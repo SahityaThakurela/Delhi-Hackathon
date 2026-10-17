@@ -1,93 +1,186 @@
-"""
-SQLAlchemy models: hospitals, users, hospital_systems.
-
-Bible section 4.2 – Tenancy, profile and requirements.
-"""
-from __future__ import annotations
-
 import uuid
-from datetime import datetime
-
+from datetime import date
+from typing import Optional, List, Dict, Any
 from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    DateTime,
-    Enum,
+    Text,
     Integer,
     SmallInteger,
-    String,
-    Text,
-    func,
+    BigInteger,
+    Boolean,
+    Date,
+    CheckConstraint,
+    ForeignKey,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.base import Base, UUIDPrimaryKeyMixin, TimestampMixin, CreatedAtMixin
+from app.models.enums import (
+    UserRole,
+    user_role_enum,
+    SystemCategory,
+    system_category_enum,
+    DeploymentModel,
+    deployment_model_enum,
+    RiskAppetite,
+    risk_appetite_enum,
+    Dimension,
+    dimension_enum,
+    Severity,
+    severity_enum,
+)
 
-from app.db.base import Base, UUIDPrimaryKeyMixin
-from app.models.enums import DeploymentModel, RiskAppetite, SystemCategory, UserRole
 
-
-class Hospital(UUIDPrimaryKeyMixin, Base):
+class Hospital(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "hospitals"
 
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    city: Mapped[str | None] = mapped_column(Text)
-    state: Mapped[str | None] = mapped_column(Text)
-    hospital_type: Mapped[str | None] = mapped_column(Text)
-    bed_count: Mapped[int | None] = mapped_column(Integer)
-    nabh_accredited: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    abdm_maturity: Mapped[int | None] = mapped_column(SmallInteger)
+    city: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    hospital_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bed_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    nabh_accredited: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    abdm_maturity: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     risk_appetite: Mapped[RiskAppetite] = mapped_column(
-        Enum(RiskAppetite, name="risk_appetite"),
-        server_default="balanced",
+        risk_appetite_enum,
+        default=RiskAppetite.balanced,
+        server_default=text("'balanced'"),
         nullable=False,
     )
-    annual_it_budget_inr: Mapped[int | None] = mapped_column(BigInteger)
-    data_residency: Mapped[str] = mapped_column(Text, server_default="india_only", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    annual_it_budget_inr: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    data_residency: Mapped[str] = mapped_column(Text, default="india_only", server_default=text("'india_only'"), nullable=False)
 
-    # relationships
-    users: Mapped[list["User"]] = relationship("User", back_populates="hospital", passive_deletes=True)
-    hospital_systems: Mapped[list["HospitalSystem"]] = relationship("HospitalSystem", back_populates="hospital", passive_deletes=True)
+    __table_args__ = (
+        CheckConstraint("abdm_maturity BETWEEN 0 AND 5", name="check_abdm_maturity_range"),
+    )
+
+    # Relationships
+    users: Mapped[List["User"]] = relationship("User", back_populates="hospital", cascade="all, delete-orphan")
+    systems: Mapped[List["HospitalSystem"]] = relationship("HospitalSystem", back_populates="hospital", cascade="all, delete-orphan")
+    requirements: Mapped[List["HospitalRequirement"]] = relationship("HospitalRequirement", back_populates="hospital", cascade="all, delete-orphan")
 
 
-class User(UUIDPrimaryKeyMixin, Base):
+class User(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "users"
 
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, name="user_role"),
+        user_role_enum,
+        default=UserRole.procurement,
+        server_default=text("'procurement'"),
         nullable=False,
-        server_default="procurement",
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
 
-    # relationships
-    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="users", foreign_keys=[hospital_id])
+    # Relationships
+    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="users")
 
 
-class HospitalSystem(UUIDPrimaryKeyMixin, Base):
+class HospitalSystem(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     __tablename__ = "hospital_systems"
 
-    hospital_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    category: Mapped[SystemCategory] = mapped_column(
-        Enum(SystemCategory, name="system_category"), nullable=False
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
     )
+    category: Mapped[SystemCategory] = mapped_column(system_category_enum, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    vendor_name: Mapped[str | None] = mapped_column(Text)
-    version: Mapped[str | None] = mapped_column(Text)
-    standards: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))  # text[]
-    interfaces: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    deployment: Mapped[DeploymentModel | None] = mapped_column(
-        Enum(DeploymentModel, name="deployment_model")
+    vendor_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    standards: Mapped[List[str]] = mapped_column(
+        ARRAY(Text),
+        default=list,
+        server_default=text("'{}'::text[]"),
+        nullable=False,
     )
-    notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    interfaces: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    deployment: Mapped[Optional[DeploymentModel]] = mapped_column(deployment_model_enum, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # relationships
-    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="hospital_systems", foreign_keys=[hospital_id])
+    # Relationships
+    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="systems")
+
+
+class RequirementCatalogue(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "requirement_catalogue"
+
+    code: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    dimension: Mapped[Dimension] = mapped_column(dimension_enum, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    authority: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    applies_to: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    check_type: Mapped[str] = mapped_column(Text, default="evidence", server_default=text("'evidence'"), nullable=False)
+    rule: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    default_severity: Mapped[Severity] = mapped_column(
+        severity_enum,
+        default=Severity.medium,
+        server_default=text("'medium'"),
+        nullable=False,
+    )
+
+    hospital_requirements: Mapped[List["HospitalRequirement"]] = relationship(
+        "HospitalRequirement",
+        back_populates="catalogue",
+    )
+
+
+class HospitalRequirement(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
+    __tablename__ = "hospital_requirements"
+
+    hospital_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    catalogue_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("requirement_catalogue.id"),
+        nullable=True,
+    )
+    dimension: Mapped[Dimension] = mapped_column(dimension_enum, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mandatory: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
+    severity_if_unmet: Mapped[Severity] = mapped_column(
+        severity_enum,
+        default=Severity.high,
+        server_default=text("'high'"),
+        nullable=False,
+    )
+    rule: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+
+    # Relationships
+    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="requirements")
+    catalogue: Mapped[Optional["RequirementCatalogue"]] = relationship("RequirementCatalogue", back_populates="hospital_requirements")

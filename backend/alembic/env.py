@@ -1,53 +1,44 @@
-"""
-Alembic async env.py for KYRO.
-
-- Reads DATABASE_URL from the .env file via pydantic-settings.
-- Uses SQLAlchemy asyncio engine for both online (run_migrations_online) mode.
-- Imports all models so autogenerate detects them.
-"""
-from __future__ import annotations
-
 import asyncio
 import os
 import sys
 from logging.config import fileConfig
-
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
 from alembic import context
 
-# ── make `backend/` importable ─────────────────────────────────────────────
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Ensure backend directory is in sys.path
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
-from app.core.config import settings  # noqa: E402
-from app.db.base import Base  # noqa: E402
-import app.models  # noqa: E402 – registers all models with Base.metadata
+from app.core.config import settings
+from app.models import Base
 
-# ── Alembic Config object ───────────────────────────────────────────────────
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
+# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Set database URL dynamically from app settings (escape % for configparser)
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
 
-# ── Migration helpers ───────────────────────────────────────────────────────
-
 def run_migrations_offline() -> None:
-    """Run migrations without connecting to the DB (generates SQL script)."""
-    url = config.get_main_option("sqlalchemy.url")
+    """Run migrations in 'offline' mode."""
+    url = settings.DATABASE_URL
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,
-        compare_server_default=True,
     )
+
     with context.begin_transaction():
         context.run_migrations()
 
@@ -56,26 +47,31 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        compare_type=True,
-        compare_server_default=True,
     )
+
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
-    """Create an async engine and run migrations in the current event loop."""
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    """In this scenario we need to create an Engine
+    and associate a connection with the context.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    connectable = create_async_engine(
+        settings.DATABASE_URL,
         poolclass=pool.NullPool,
     )
+
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+
     await connectable.dispose()
 
 
 def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
     asyncio.run(run_async_migrations())
 
 
