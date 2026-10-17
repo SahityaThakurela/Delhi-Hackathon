@@ -1,4 +1,8 @@
-# Export all models and enums for Base.metadata discovery and convenient imports
+"""SQLAlchemy Models package for Kyro.
+
+Exports all domain models and native enums for metadata discovery and imports.
+"""
+
 from app.db.base import Base
 from app.models.enums import (
     UserRole,

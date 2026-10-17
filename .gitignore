@@ -1,4 +1,19 @@
-# Python
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment Configuration
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Python Caches & Bytecode
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,26 +35,39 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-.venv/
-venv/
-ENV/
-
-# Environment variables
-.env
-!.env.example
-
-# IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Testing
+# Testing & Quality
 .pytest_cache/
 .coverage
 htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Antigravity & OS
+# Uploaded Documents & Local Storage Fallback
+storage/
+uploads/
+*.pdf
+!docs/KYRO_TEAM_BIBLE.pdf
+*.docx
+*.png
+*.jpg
+*.jpeg
+
+# Logs & Runtime Process Files
+*.log
+logs/
+*.pid
+
+# IDE & Editor Specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+
+# Build Artifacts & Distributions
+reports/*.pdf
+dist/
+build/
+*.egg-info/
