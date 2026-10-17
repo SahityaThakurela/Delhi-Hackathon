@@ -1,0 +1,54 @@
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment Configuration
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Python Caches & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Uploaded Documents & Local Storage Fallback
+storage/
+uploads/
+*.pdf
+*.docx
+*.png
+*.jpg
+*.jpeg
+
+# Logs & Runtime Process Files
+*.log
+logs/
+*.pid
+
+# IDE & Editor Specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build Artifacts & Distributions
+reports/*.pdf
+dist/
+build/
+*.egg-info/
