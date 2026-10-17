@@ -133,7 +133,7 @@ def test_deterministic_report_recent():
 def test_deterministic_standards_coverage():
     """Verify standard normalization and coverage calculation."""
     assert normalize_standard_name("FHIR 4.0.1") == "FHIR R4"
-    assert normalize_standard_name("hl7 v2.5") == "HL7V2.5"
+    assert normalize_standard_name("hl7 v2.5") == "HL7v2.5"
 
     hospital_standards = ["FHIR R4", "HL7v2.5", "DICOMweb"]
     vendor_standards = ["FHIR 4.0.1", "HL7 2.5"]
